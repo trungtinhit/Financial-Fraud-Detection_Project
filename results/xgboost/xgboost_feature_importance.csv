@@ -1,0 +1,14 @@
+﻿feature,importance
+numeric__balanceDiffOrig,0.33482417
+numeric__newbalanceOrig,0.24723439
+categorical__type_PAYMENT,0.20933937
+categorical__type_TRANSFER,0.07768344
+numeric__amount,0.026000483
+numeric__balanceDiffDest,0.024446815
+categorical__type_CASH_OUT,0.021146443
+numeric__oldbalanceOrg,0.020375708
+categorical__type_DEBIT,0.012206703
+categorical__type_CASH_IN,0.011420867
+numeric__newbalanceDest,0.008285508
+numeric__step,0.004511545
+numeric__oldbalanceDest,0.002524575
