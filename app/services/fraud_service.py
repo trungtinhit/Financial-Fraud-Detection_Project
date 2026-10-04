@@ -1,6 +1,9 @@
 # ============================================================
-# FRAUD SERVICE
-# Xử lý logic cho hệ thống phát hiện giao dịch bất thường
+# FRAUD SERVICE - DEPLOYMENT V2
+# Features:
+# - type
+# - amount
+# - oldbalanceOrg
 # ============================================================
 
 import sys
@@ -11,15 +14,12 @@ import pandas as pd
 
 
 # ============================================================
-# 1. IMPORT PATHS
+# 1. PATH CONFIG
 # ============================================================
 
 SERVICE_DIR = Path(__file__).resolve().parent
-
 APP_DIR = SERVICE_DIR.parent
-
 PROJECT_ROOT = APP_DIR.parent
-
 SCRIPTS_DIR = PROJECT_ROOT / "scripts"
 
 
@@ -31,8 +31,8 @@ if str(SCRIPTS_DIR) not in sys.path:
 
 
 from paths import (
-    XGBOOST_DEPLOYMENT_MODEL_FILE,
-    XGBOOST_DEPLOYMENT_THRESHOLD_FILE
+    XGBOOST_DEPLOYMENT_V2_MODEL_FILE,
+    XGBOOST_DEPLOYMENT_V2_THRESHOLD_FILE
 )
 
 
@@ -41,7 +41,6 @@ from paths import (
 # ============================================================
 
 FEATURES = [
-    "step",
     "type",
     "amount",
     "oldbalanceOrg"
@@ -71,18 +70,16 @@ OUTGOING_TYPES = [
 
 def load_model():
 
-    if not XGBOOST_DEPLOYMENT_MODEL_FILE.exists():
+    if not XGBOOST_DEPLOYMENT_V2_MODEL_FILE.exists():
 
         raise FileNotFoundError(
-            "Không tìm thấy deployment model:\n"
-            f"{XGBOOST_DEPLOYMENT_MODEL_FILE}"
+            "Không tìm thấy Deployment V2 model:\n"
+            f"{XGBOOST_DEPLOYMENT_V2_MODEL_FILE}"
         )
 
-    model = joblib.load(
-        XGBOOST_DEPLOYMENT_MODEL_FILE
+    return joblib.load(
+        XGBOOST_DEPLOYMENT_V2_MODEL_FILE
     )
-
-    return model
 
 
 # ============================================================
@@ -91,15 +88,15 @@ def load_model():
 
 def load_threshold():
 
-    if not XGBOOST_DEPLOYMENT_THRESHOLD_FILE.exists():
+    if not XGBOOST_DEPLOYMENT_V2_THRESHOLD_FILE.exists():
 
         raise FileNotFoundError(
-            "Không tìm thấy threshold:\n"
-            f"{XGBOOST_DEPLOYMENT_THRESHOLD_FILE}"
+            "Không tìm thấy Deployment V2 threshold:\n"
+            f"{XGBOOST_DEPLOYMENT_V2_THRESHOLD_FILE}"
         )
 
     with open(
-        XGBOOST_DEPLOYMENT_THRESHOLD_FILE,
+        XGBOOST_DEPLOYMENT_V2_THRESHOLD_FILE,
         "r",
         encoding="utf-8"
     ) as f:
@@ -116,7 +113,6 @@ def load_threshold():
 # ============================================================
 
 def validate_transaction(
-    step,
     transaction_type,
     amount,
     oldbalanceOrg
@@ -124,17 +120,6 @@ def validate_transaction(
 
     errors = []
     warnings = []
-
-
-    # --------------------------------------------------------
-    # STEP
-    # --------------------------------------------------------
-
-    if step < 1:
-
-        errors.append(
-            "Step phải lớn hơn hoặc bằng 1."
-        )
 
 
     # --------------------------------------------------------
@@ -195,7 +180,7 @@ def validate_transaction(
     ):
 
         warnings.append(
-            "Tài khoản gửi hiện có số dư bằng 0."
+            "Tài khoản hiện có số dư bằng 0."
         )
 
 
@@ -222,7 +207,6 @@ def validate_transaction(
 # ============================================================
 
 def create_model_input(
-    step,
     transaction_type,
     amount,
     oldbalanceOrg
@@ -230,10 +214,6 @@ def create_model_input(
 
     transaction = pd.DataFrame(
         {
-            "step": [
-                step
-            ],
-
             "type": [
                 transaction_type
             ],
@@ -249,12 +229,9 @@ def create_model_input(
     )
 
 
-    transaction = transaction[
+    return transaction[
         FEATURES
     ]
-
-
-    return transaction
 
 
 # ============================================================
@@ -284,11 +261,10 @@ def predict_transaction(
 
 
 # ============================================================
-# 8. FULL ANALYSIS SERVICE
+# 8. FULL ANALYSIS
 # ============================================================
 
 def analyze_transaction(
-    step,
     transaction_type,
     amount,
     oldbalanceOrg,
@@ -302,7 +278,6 @@ def analyze_transaction(
 
     errors, warnings = (
         validate_transaction(
-            step=step,
             transaction_type=transaction_type,
             amount=amount,
             oldbalanceOrg=oldbalanceOrg
@@ -327,12 +302,11 @@ def analyze_transaction(
 
 
     # --------------------------------------------------------
-    # MODEL INPUT
+    # CREATE MODEL INPUT
     # --------------------------------------------------------
 
     transaction = (
         create_model_input(
-            step=step,
             transaction_type=transaction_type,
             amount=amount,
             oldbalanceOrg=oldbalanceOrg
@@ -358,19 +332,20 @@ def analyze_transaction(
     # --------------------------------------------------------
 
     return {
-
         "success": True,
 
         "errors": [],
 
         "warnings": warnings,
 
-        "probability": probability,
+        "probability":
+            probability,
 
         "probability_percent":
             probability * 100,
 
-        "prediction": prediction,
+        "prediction":
+            prediction,
 
         "is_fraud":
             prediction == 1,

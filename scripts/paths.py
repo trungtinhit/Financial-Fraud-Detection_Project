@@ -125,6 +125,24 @@ XGBOOST_DEPLOYMENT_THRESHOLD_RESULTS_FILE = (
     XGBOOST_RESULTS_DIR / "xgboost_deployment_threshold_results.csv"
 )
 
+# ============================================================
+# XGBOOST DEPLOYMENT V2 - 3 FEATURES
+# ============================================================
+
+XGBOOST_DEPLOYMENT_V2_MODEL_FILE = (
+    XGBOOST_MODEL_DIR /
+    "xgboost_deployment_v2_model.pkl"
+)
+
+XGBOOST_DEPLOYMENT_V2_THRESHOLD_FILE = (
+    XGBOOST_MODEL_DIR /
+    "xgboost_deployment_v2_threshold.txt"
+)
+
+XGBOOST_DEPLOYMENT_V2_THRESHOLD_RESULTS_FILE = (
+    XGBOOST_RESULTS_DIR /
+    "xgboost_deployment_v2_threshold_results.csv"
+)
 
 # ============================================================
 # PLOTS

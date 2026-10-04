@@ -1,6 +1,11 @@
 # ============================================================
-# STREAMLIT APP - OPTIMIZED
+# STREAMLIT APP - DEPLOYMENT V2
 # Financial Fraud Detection
+#
+# Features:
+# - type
+# - amount
+# - oldbalanceOrg
 # ============================================================
 
 import sys
@@ -19,8 +24,12 @@ APP_DIR = Path(__file__).resolve().parent
 PROJECT_ROOT = APP_DIR.parent
 SERVICES_DIR = APP_DIR / "services"
 
+
 if str(SERVICES_DIR) not in sys.path:
-    sys.path.insert(0, str(SERVICES_DIR))
+    sys.path.insert(
+        0,
+        str(SERVICES_DIR)
+    )
 
 
 from fraud_service import (
@@ -43,15 +52,20 @@ st.set_page_config(
 
 
 # ============================================================
-# 3. HISTORY FILE
+# 3. HISTORY CONFIG
 # ============================================================
 
-HISTORY_DIR = PROJECT_ROOT / "results" / "app"
+HISTORY_DIR = (
+    PROJECT_ROOT /
+    "results" /
+    "app"
+)
 
 HISTORY_FILE = (
     HISTORY_DIR /
-    "transaction_history.csv"
+    "transaction_history_v2.csv"
 )
+
 
 HISTORY_DIR.mkdir(
     parents=True,
@@ -65,11 +79,13 @@ HISTORY_DIR.mkdir(
 
 @st.cache_resource
 def get_model():
+
     return load_model()
 
 
 @st.cache_resource
 def get_threshold():
+
     return load_threshold()
 
 
@@ -88,37 +104,7 @@ except Exception as e:
 
 
 # ============================================================
-# 5. STEP TỰ ĐỘNG
-# ============================================================
-
-def get_current_step():
-
-    # PaySim dùng step theo giờ.
-    # Bản demo dùng số giờ tính từ đầu năm.
-
-    now = datetime.now()
-
-    start_of_year = datetime(
-        now.year,
-        1,
-        1
-    )
-
-    hours = int(
-        (
-            now - start_of_year
-        ).total_seconds()
-        // 3600
-    )
-
-    return max(
-        hours,
-        1
-    )
-
-
-# ============================================================
-# 6. RISK LEVEL
+# 5. RISK LEVEL
 # ============================================================
 
 def get_risk_level(
@@ -126,61 +112,43 @@ def get_risk_level(
     threshold
 ):
 
-    # --------------------------------------------------------
-    # FRAUD
-    # --------------------------------------------------------
-
     if probability >= threshold:
 
-        return {
-            "level": "CẢNH BÁO GIAN LẬN",
-            "status": "fraud"
-        }
+        return (
+            "CẢNH BÁO NGUY CƠ GIAN LẬN",
+            "fraud"
+        )
 
+    elif probability >= 0.90:
 
-    # --------------------------------------------------------
-    # HIGH RISK
-    # --------------------------------------------------------
+        return (
+            "RỦI RO CAO",
+            "high"
+        )
 
-    if probability >= 0.90:
+    elif probability >= 0.70:
 
-        return {
-            "level": "RỦI RO CAO",
-            "status": "high"
-        }
+        return (
+            "CẦN CHÚ Ý",
+            "medium"
+        )
 
+    else:
 
-    # --------------------------------------------------------
-    # MEDIUM RISK
-    # --------------------------------------------------------
-
-    if probability >= 0.70:
-
-        return {
-            "level": "CẦN CHÚ Ý",
-            "status": "medium"
-        }
-
-
-    # --------------------------------------------------------
-    # LOW RISK
-    # --------------------------------------------------------
-
-    return {
-        "level": "RỦI RO THẤP",
-        "status": "low"
-    }
+        return (
+            "RỦI RO THẤP",
+            "low"
+        )
 
 
 # ============================================================
-# 7. SAVE HISTORY
+# 6. SAVE HISTORY
 # ============================================================
 
 def save_history(
     transaction_type,
     amount,
     oldbalanceOrg,
-    step,
     probability,
     threshold,
     risk_level,
@@ -192,8 +160,7 @@ def save_history(
         [
             {
                 "timestamp":
-                    datetime.now()
-                    .strftime(
+                    datetime.now().strftime(
                         "%Y-%m-%d %H:%M:%S"
                     ),
 
@@ -205,9 +172,6 @@ def save_history(
 
                 "oldbalanceOrg":
                     oldbalanceOrg,
-
-                "step":
-                    step,
 
                 "probability":
                     probability,
@@ -260,6 +224,21 @@ def save_history(
 
 
 # ============================================================
+# 7. LOAD HISTORY
+# ============================================================
+
+def load_history():
+
+    if not HISTORY_FILE.exists():
+
+        return pd.DataFrame()
+
+    return pd.read_csv(
+        HISTORY_FILE
+    )
+
+
+# ============================================================
 # 8. HEADER
 # ============================================================
 
@@ -268,525 +247,777 @@ st.title(
 )
 
 st.caption(
-    "Financial Fraud Detection "
-    "sử dụng XGBoost Deployment Model"
+    "Financial Fraud Detection - "
+    "XGBoost Deployment Model V2"
 )
 
 
 # ============================================================
-# 9. MODEL INFO
+# 9. SIDEBAR
 # ============================================================
 
-with st.expander(
-    "Thông tin mô hình",
-    expanded=False
-):
+with st.sidebar:
 
-    col1, col2, col3 = st.columns(3)
+    st.header(
+        "Thông tin hệ thống"
+    )
 
+    st.write(
+        "**Model:** XGBoost V2"
+    )
 
-    with col1:
+    st.write(
+        "**Số feature:** 3"
+    )
 
-        st.metric(
-            "Model",
-            "XGBoost"
-        )
-
-
-    with col2:
-
-        st.metric(
-            "Số feature",
-            "4"
-        )
+    st.write(
+        f"**Ngưỡng cảnh báo:** "
+        f"{threshold * 100:.0f}%"
+    )
 
 
-    with col3:
-
-        st.metric(
-            "Threshold",
-            f"{threshold * 100:.0f}%"
-        )
+    st.divider()
 
 
-    st.markdown(
+    st.write(
+        "**Feature triển khai:**"
+    )
+
+    st.code(
         """
-        **Feature sử dụng**
-
-        - `step`
-        - `type`
-        - `amount`
-        - `oldbalanceOrg`
+type
+amount
+oldbalanceOrg
         """
     )
 
 
     st.info(
-        "Model triển khai không cần "
+        "Model V2 không sử dụng step, "
         "số dư người nhận hoặc "
-        "số dư sau giao dịch."
+        "thông tin sau giao dịch."
     )
 
 
 # ============================================================
-# 10. INPUT FORM
+# 10. TABS
 # ============================================================
 
-st.subheader(
-    "Thông tin giao dịch"
+tab_check, tab_dashboard, tab_history, tab_model = st.tabs(
+    [
+        "🔎 Kiểm tra giao dịch",
+        "📊 Dashboard",
+        "📜 Lịch sử",
+        "🧠 Thông tin model"
+    ]
 )
 
 
-with st.form(
-    "transaction_form"
-):
-
-    col1, col2 = st.columns(2)
-
-
-    # --------------------------------------------------------
-    # LEFT
-    # --------------------------------------------------------
-
-    with col1:
-
-        transaction_type = st.selectbox(
-            "Loại giao dịch",
-            VALID_TYPES
-        )
-
-
-        amount = st.number_input(
-            "Số tiền giao dịch",
-            min_value=0.0,
-            value=1000000.0,
-            step=100000.0,
-            format="%.2f"
-        )
-
-
-    # --------------------------------------------------------
-    # RIGHT
-    # --------------------------------------------------------
-
-    with col2:
-
-        oldbalanceOrg = st.number_input(
-            "Số dư hiện tại của tài khoản",
-            min_value=0.0,
-            value=5000000.0,
-            step=100000.0,
-            format="%.2f"
-        )
-
-
-        st.write(
-            "Mốc thời gian"
-        )
-
-        st.info(
-            "Step được hệ thống "
-            "tự động xác định."
-        )
-
-
-    submitted = st.form_submit_button(
-        "🔎 Kiểm tra giao dịch",
-        use_container_width=True
-    )
-
-
 # ============================================================
-# 11. PROCESS
+# TAB 1 - TRANSACTION CHECK
 # ============================================================
 
-if submitted:
-
-    step = get_current_step()
-
-
-    result = analyze_transaction(
-        step=step,
-        transaction_type=transaction_type,
-        amount=amount,
-        oldbalanceOrg=oldbalanceOrg,
-        model=model,
-        threshold=threshold
-    )
-
-
-    # ========================================================
-    # ERROR
-    # ========================================================
-
-    if not result["success"]:
-
-        st.divider()
-
-        st.subheader(
-            "Kết quả kiểm tra"
-        )
-
-
-        st.error(
-            "Dữ liệu giao dịch không hợp lệ."
-        )
-
-
-        for error in result["errors"]:
-
-            st.error(
-                f"❌ {error}"
-            )
-
-
-        st.stop()
-
-
-    # ========================================================
-    # RESULT DATA
-    # ========================================================
-
-    probability = result[
-        "probability"
-    ]
-
-    prediction = result[
-        "prediction"
-    ]
-
-    warnings = result[
-        "warnings"
-    ]
-
-    transaction = result[
-        "transaction"
-    ]
-
-
-    risk = get_risk_level(
-        probability,
-        threshold
-    )
-
-
-    # ========================================================
-    # SAVE HISTORY
-    # ========================================================
-
-    save_history(
-        transaction_type=transaction_type,
-        amount=amount,
-        oldbalanceOrg=oldbalanceOrg,
-        step=step,
-        probability=probability,
-        threshold=threshold,
-        risk_level=risk["level"],
-        prediction=prediction,
-        warnings=warnings
-    )
-
-
-    # ========================================================
-    # OUTPUT
-    # ========================================================
-
-    st.divider()
+with tab_check:
 
     st.subheader(
-        "Kết quả phân tích"
+        "Thông tin giao dịch"
     )
 
 
-    # ========================================================
-    # BUSINESS WARNINGS
-    # ========================================================
+    with st.form(
+        "transaction_form"
+    ):
 
-    if warnings:
-
-        st.warning(
-            "Phát hiện điểm cần chú ý "
-            "về nghiệp vụ."
-        )
+        col1, col2 = st.columns(2)
 
 
-        for warning in warnings:
+        # ====================================================
+        # LEFT
+        # ====================================================
 
-            st.write(
-                f"⚠️ {warning}"
+        with col1:
+
+            transaction_type = st.selectbox(
+                "Loại giao dịch",
+                VALID_TYPES
             )
 
 
-    # ========================================================
-    # METRICS
-    # ========================================================
+            amount = st.number_input(
+                "Số tiền giao dịch",
+                min_value=0.0,
+                value=1000000.0,
+                step=100000.0,
+                format="%.2f"
+            )
 
-    col1, col2, col3 = st.columns(3)
+
+        # ====================================================
+        # RIGHT
+        # ====================================================
+
+        with col2:
+
+            oldbalanceOrg = st.number_input(
+                "Số dư hiện tại của tài khoản",
+                min_value=0.0,
+                value=5000000.0,
+                step=100000.0,
+                format="%.2f"
+            )
 
 
-    with col1:
+            st.info(
+                "Model V2 chỉ sử dụng "
+                "thông tin có thể biết "
+                "trước khi giao dịch hoàn tất."
+            )
 
-        st.metric(
-            "Xác suất gian lận",
-            f"{probability * 100:.2f}%"
+
+        submitted = st.form_submit_button(
+            "🔎 Kiểm tra giao dịch",
+            use_container_width=True
         )
 
 
-    with col2:
+    # ========================================================
+    # PROCESS
+    # ========================================================
 
-        st.metric(
-            "Threshold",
-            f"{threshold * 100:.0f}%"
+    if submitted:
+
+        result = analyze_transaction(
+            transaction_type=transaction_type,
+            amount=amount,
+            oldbalanceOrg=oldbalanceOrg,
+            model=model,
+            threshold=threshold
         )
 
 
-    with col3:
+        # ====================================================
+        # ERROR
+        # ====================================================
 
-        st.metric(
-            "Mức độ rủi ro",
-            risk["level"]
-        )
+        if not result["success"]:
+
+            st.error(
+                "Dữ liệu giao dịch không hợp lệ."
+            )
 
 
-    # ========================================================
-    # RISK BAR
-    # ========================================================
+            for error in result["errors"]:
 
-    st.write(
-        "### Mức độ rủi ro"
+                st.error(
+                    f"❌ {error}"
+                )
+
+        else:
+
+            probability = result[
+                "probability"
+            ]
+
+            prediction = result[
+                "prediction"
+            ]
+
+            warnings = result[
+                "warnings"
+            ]
+
+            transaction = result[
+                "transaction"
+            ]
+
+
+            risk_level, risk_status = (
+                get_risk_level(
+                    probability,
+                    threshold
+                )
+            )
+
+
+            # ================================================
+            # SAVE HISTORY
+            # ================================================
+
+            save_history(
+                transaction_type=transaction_type,
+                amount=amount,
+                oldbalanceOrg=oldbalanceOrg,
+                probability=probability,
+                threshold=threshold,
+                risk_level=risk_level,
+                prediction=prediction,
+                warnings=warnings
+            )
+
+
+            # ================================================
+            # RESULT
+            # ================================================
+
+            st.divider()
+
+            st.subheader(
+                "Kết quả phân tích"
+            )
+
+
+            # ================================================
+            # BUSINESS WARNING
+            # ================================================
+
+            if warnings:
+
+                st.warning(
+                    "Phát hiện điểm cần chú ý "
+                    "về nghiệp vụ."
+                )
+
+
+                for warning in warnings:
+
+                    st.write(
+                        f"⚠️ {warning}"
+                    )
+
+
+            # ================================================
+            # METRICS
+            # ================================================
+
+            col1, col2, col3 = (
+                st.columns(3)
+            )
+
+
+            with col1:
+
+                st.metric(
+                    "Xác suất mô hình",
+                    f"{probability * 100:.2f}%"
+                )
+
+
+            with col2:
+
+                st.metric(
+                    "Ngưỡng cảnh báo",
+                    f"{threshold * 100:.0f}%"
+                )
+
+
+            with col3:
+
+                st.metric(
+                    "Mức độ rủi ro",
+                    risk_level
+                )
+
+
+            # ================================================
+            # RISK BAR
+            # ================================================
+
+            st.write(
+                "### Mức độ rủi ro"
+            )
+
+
+            st.progress(
+                min(
+                    max(
+                        float(
+                            probability
+                        ),
+                        0.0
+                    ),
+                    1.0
+                )
+            )
+
+
+            # ================================================
+            # FINAL MESSAGE
+            # ================================================
+
+            if risk_status == "fraud":
+
+                st.error(
+                    "🚨 Model cảnh báo giao dịch "
+                    "có nguy cơ gian lận rất cao."
+                )
+
+
+            elif risk_status == "high":
+
+                st.warning(
+                    "⚠️ Giao dịch có mức rủi ro cao. "
+                    "Xác suất chưa vượt ngưỡng cảnh báo "
+                    "nhưng nên được kiểm tra thêm."
+                )
+
+
+            elif risk_status == "medium":
+
+                st.warning(
+                    "⚠️ Giao dịch cần chú ý."
+                )
+
+
+            else:
+
+                st.success(
+                    "✅ Giao dịch có mức rủi ro thấp."
+                )
+
+
+            # ================================================
+            # BUSINESS INFO
+            # ================================================
+
+            if warnings:
+
+                st.info(
+                    "Cảnh báo nghiệp vụ và kết quả "
+                    "của model được đánh giá độc lập."
+                )
+
+
+            # ================================================
+            # MODEL INPUT
+            # ================================================
+
+            with st.expander(
+                "Xem dữ liệu được đưa vào model"
+            ):
+
+                st.dataframe(
+                    transaction,
+                    use_container_width=True,
+                    hide_index=True
+                )
+
+
+            # ================================================
+            # TECHNICAL INFO
+            # ================================================
+
+            with st.expander(
+                "Chi tiết kỹ thuật"
+            ):
+
+                st.write(
+                    f"Probability: "
+                    f"`{probability:.6f}`"
+                )
+
+                st.write(
+                    f"Threshold: "
+                    f"`{threshold:.6f}`"
+                )
+
+                st.write(
+                    f"Prediction: "
+                    f"`{prediction}`"
+                )
+
+
+# ============================================================
+# TAB 2 - DASHBOARD
+# ============================================================
+
+with tab_dashboard:
+
+    st.subheader(
+        "Dashboard giao dịch"
     )
 
 
-    st.progress(
-        min(
-            max(
-                float(probability),
-                0.0
-            ),
-            1.0
+    history_df = load_history()
+
+
+    if history_df.empty:
+
+        st.info(
+            "Chưa có dữ liệu giao dịch."
         )
-    )
-
-
-    # ========================================================
-    # RISK MESSAGE
-    # ========================================================
-
-    if risk["status"] == "fraud":
-
-        st.error(
-            "🚨 Model cảnh báo giao dịch "
-            "có khả năng gian lận."
-        )
-
-
-    elif risk["status"] == "high":
-
-        st.warning(
-            "⚠️ Giao dịch có mức rủi ro cao. "
-            "Xác suất chưa vượt threshold "
-            "nhưng nên được kiểm tra thủ công."
-        )
-
-
-    elif risk["status"] == "medium":
-
-        st.warning(
-            "⚠️ Giao dịch cần chú ý. "
-            "Nên theo dõi thêm trước khi xử lý."
-        )
-
 
     else:
 
-        st.success(
-            "✅ Giao dịch có mức rủi ro thấp."
+        # ====================================================
+        # SUMMARY
+        # ====================================================
+
+        total_transactions = len(
+            history_df
         )
 
 
-    # ========================================================
-    # BUSINESS WARNING
-    # ========================================================
+        fraud_count = int(
+            (
+                history_df[
+                    "prediction"
+                ] == 1
+            ).sum()
+        )
 
-    if warnings:
+
+        high_risk_count = int(
+            history_df[
+                "risk_level"
+            ]
+            .isin(
+                [
+                    "RỦI RO CAO",
+                    "CẢNH BÁO NGUY CƠ GIAN LẬN"
+                ]
+            )
+            .sum()
+        )
+
+
+        avg_probability = (
+            history_df[
+                "probability_percent"
+            ].mean()
+        )
+
+
+        col1, col2, col3, col4 = (
+            st.columns(4)
+        )
+
+
+        with col1:
+
+            st.metric(
+                "Tổng giao dịch",
+                total_transactions
+            )
+
+
+        with col2:
+
+            st.metric(
+                "Cảnh báo",
+                fraud_count
+            )
+
+
+        with col3:
+
+            st.metric(
+                "Rủi ro cao",
+                high_risk_count
+            )
+
+
+        with col4:
+
+            st.metric(
+                "Xác suất trung bình",
+                f"{avg_probability:.2f}%"
+            )
+
+
+        st.divider()
+
+
+        # ====================================================
+        # TYPE CHART
+        # ====================================================
+
+        st.write(
+            "### Giao dịch theo loại"
+        )
+
+
+        type_counts = (
+            history_df[
+                "type"
+            ]
+            .value_counts()
+        )
+
+
+        st.bar_chart(
+            type_counts
+        )
+
+
+        # ====================================================
+        # RISK CHART
+        # ====================================================
+
+        st.write(
+            "### Phân bố mức độ rủi ro"
+        )
+
+
+        risk_counts = (
+            history_df[
+                "risk_level"
+            ]
+            .value_counts()
+        )
+
+
+        st.bar_chart(
+            risk_counts
+        )
+
+
+# ============================================================
+# TAB 3 - HISTORY
+# ============================================================
+
+with tab_history:
+
+    st.subheader(
+        "Lịch sử kiểm tra giao dịch"
+    )
+
+
+    history_df = load_history()
+
+
+    if history_df.empty:
 
         st.info(
-            "Kết quả model và cảnh báo "
-            "nghiệp vụ nên được xem xét "
-            "đồng thời."
+            "Chưa có giao dịch nào."
+        )
+
+    else:
+
+        col1, col2 = st.columns(2)
+
+
+        # ====================================================
+        # TYPE FILTER
+        # ====================================================
+
+        with col1:
+
+            filter_type = st.selectbox(
+                "Lọc theo loại giao dịch",
+                [
+                    "TẤT CẢ"
+                ]
+                +
+                sorted(
+                    history_df[
+                        "type"
+                    ]
+                    .dropna()
+                    .unique()
+                    .tolist()
+                )
+            )
+
+
+        # ====================================================
+        # RISK FILTER
+        # ====================================================
+
+        with col2:
+
+            filter_risk = st.selectbox(
+                "Lọc theo mức độ rủi ro",
+                [
+                    "TẤT CẢ"
+                ]
+                +
+                sorted(
+                    history_df[
+                        "risk_level"
+                    ]
+                    .dropna()
+                    .unique()
+                    .tolist()
+                )
+            )
+
+
+        filtered_df = (
+            history_df.copy()
         )
 
 
-    # ========================================================
-    # TRANSACTION INPUT
-    # ========================================================
+        if filter_type != "TẤT CẢ":
 
-    with st.expander(
-        "Xem dữ liệu được đưa vào model"
-    ):
+            filtered_df = filtered_df[
+                filtered_df[
+                    "type"
+                ] == filter_type
+            ]
+
+
+        if filter_risk != "TẤT CẢ":
+
+            filtered_df = filtered_df[
+                filtered_df[
+                    "risk_level"
+                ] == filter_risk
+            ]
+
+
+        # ====================================================
+        # NEWEST FIRST
+        # ====================================================
+
+        filtered_df = (
+            filtered_df
+            .iloc[::-1]
+        )
+
 
         st.dataframe(
-            transaction,
+            filtered_df[
+                [
+                    "timestamp",
+                    "type",
+                    "amount",
+                    "oldbalanceOrg",
+                    "probability_percent",
+                    "risk_level",
+                    "warnings"
+                ]
+            ],
             use_container_width=True,
             hide_index=True
         )
 
 
-    # ========================================================
-    # TECHNICAL DETAILS
-    # ========================================================
-
-    with st.expander(
-        "Chi tiết kỹ thuật"
-    ):
-
-        st.write(
-            f"Probability: "
-            f"`{probability:.6f}`"
-        )
-
-        st.write(
-            f"Threshold: "
-            f"`{threshold:.6f}`"
-        )
-
-        st.write(
-            f"Prediction: "
-            f"`{prediction}`"
-        )
-
-        st.write(
-            f"Step: "
-            f"`{step}`"
+        st.caption(
+            f"Hiển thị "
+            f"{len(filtered_df)} giao dịch."
         )
 
 
 # ============================================================
-# 12. HISTORY
+# TAB 4 - MODEL INFORMATION
 # ============================================================
 
-st.divider()
+with tab_model:
 
-st.subheader(
-    "Lịch sử kiểm tra giao dịch"
-)
-
-
-if HISTORY_FILE.exists():
-
-    history_df = pd.read_csv(
-        HISTORY_FILE
+    st.subheader(
+        "Thông tin XGBoost Deployment V2"
     )
 
 
-    # --------------------------------------------------------
-    # HIỂN THỊ 20 GIAO DỊCH GẦN NHẤT
-    # --------------------------------------------------------
+    st.markdown(
+        """
+        ### Feature được sử dụng
 
-    history_display = (
-        history_df
-        .tail(20)
-        .iloc[::-1]
+        Model triển khai cuối sử dụng 3 feature:
+
+        - `type`
+        - `amount`
+        - `oldbalanceOrg`
+
+        `step` đã được loại bỏ vì đây là thuộc tính
+        thời gian đặc thù của dữ liệu mô phỏng PaySim
+        và không phù hợp để tự sinh trong môi trường thực tế.
+        """
+    )
+
+
+    # ========================================================
+    # MODEL PERFORMANCE
+    # ========================================================
+
+    st.write(
+        "### Kết quả trên tập Test"
+    )
+
+
+    metric_df = pd.DataFrame(
+        {
+            "Chỉ số": [
+                "Accuracy",
+                "Precision",
+                "Recall",
+                "F1-score",
+                "ROC-AUC",
+                "PR-AUC"
+            ],
+
+            "Giá trị": [
+                0.999305,
+                0.717341,
+                0.762175,
+                0.739079,
+                0.998724,
+                0.809026
+            ]
+        }
     )
 
 
     st.dataframe(
-        history_display[
-            [
-                "timestamp",
-                "type",
-                "amount",
-                "oldbalanceOrg",
-                "probability_percent",
-                "risk_level"
-            ]
-        ],
+        metric_df,
         use_container_width=True,
         hide_index=True
     )
 
 
-    # --------------------------------------------------------
-    # SUMMARY
-    # --------------------------------------------------------
-
-    total_transactions = len(
-        history_df
-    )
-
-
-    fraud_count = int(
-        (
-            history_df[
-                "prediction"
-            ] == 1
-        ).sum()
-    )
-
-
-    high_risk_count = int(
-        history_df[
-            "risk_level"
-        ]
-        .isin(
-            [
-                "RỦI RO CAO",
-                "CẢNH BÁO GIAN LẬN"
-            ]
-        )
-        .sum()
-    )
-
+    # ========================================================
+    # CONFUSION MATRIX
+    # ========================================================
 
     st.write(
-        "### Thống kê nhanh"
+        "### Confusion Matrix"
     )
 
 
-    col1, col2, col3 = st.columns(3)
+    confusion_df = pd.DataFrame(
+        {
+            "Metric": [
+                "True Negative",
+                "False Positive",
+                "False Negative",
+                "True Positive"
+            ],
+
+            "Value": [
+                952791,
+                370,
+                293,
+                939
+            ]
+        }
+    )
 
 
-    with col1:
+    st.dataframe(
+        confusion_df,
+        use_container_width=True,
+        hide_index=True
+    )
 
-        st.metric(
-            "Tổng giao dịch",
-            total_transactions
-        )
-
-
-    with col2:
-
-        st.metric(
-            "Cảnh báo gian lận",
-            fraud_count
-        )
-
-
-    with col3:
-
-        st.metric(
-            "Rủi ro cao",
-            high_risk_count
-        )
-
-
-else:
 
     st.info(
-        "Chưa có lịch sử giao dịch."
+        "Ngưỡng cảnh báo được lựa chọn "
+        "trên tập Validation bằng F1-score "
+        "và có giá trị 0.99."
     )
 
 
 # ============================================================
-# 13. FOOTER
+# FOOTER
 # ============================================================
 
 st.divider()
 
 
 st.caption(
+    "Financial Fraud Detection Project | "
+    "XGBoost Deployment V2 | "
     "Model được huấn luyện trên dữ liệu PaySim. "
-    "Kết quả chỉ phản ánh dự đoán của mô hình "
-    "và không phải kết luận tuyệt đối về "
-    "một giao dịch thực tế."
+    "Kết quả là dự đoán của mô hình, "
+    "không phải kết luận tuyệt đối."
 )
