@@ -1,11 +1,11 @@
 # ============================================================
-# STREAMLIT APP - XGBOOST DEPLOYMENT V3
+# STREAMLIT APP - DEPLOYMENT V2
+# Financial Fraud Detection
 #
 # Features:
 # - type
 # - amount
 # - oldbalanceOrg
-# - transactions_per_hour
 # ============================================================
 
 import sys
@@ -23,6 +23,7 @@ import streamlit as st
 APP_DIR = Path(__file__).resolve().parent
 PROJECT_ROOT = APP_DIR.parent
 SERVICES_DIR = APP_DIR / "services"
+
 
 if str(SERVICES_DIR) not in sys.path:
     sys.path.insert(
@@ -55,15 +56,16 @@ st.set_page_config(
 # ============================================================
 
 HISTORY_DIR = (
-    PROJECT_ROOT
-    / "results"
-    / "app"
+    PROJECT_ROOT /
+    "results" /
+    "app"
 )
 
 HISTORY_FILE = (
-    HISTORY_DIR
-    / "transaction_history_v3.csv"
+    HISTORY_DIR /
+    "transaction_history_v2.csv"
 )
+
 
 HISTORY_DIR.mkdir(
     parents=True,
@@ -147,7 +149,6 @@ def save_history(
     transaction_type,
     amount,
     oldbalanceOrg,
-    transactions_per_hour,
     probability,
     threshold,
     risk_level,
@@ -171,9 +172,6 @@ def save_history(
 
                 "oldbalanceOrg":
                     oldbalanceOrg,
-
-                "transactions_per_hour":
-                    transactions_per_hour,
 
                 "probability":
                     probability,
@@ -235,15 +233,9 @@ def load_history():
 
         return pd.DataFrame()
 
-    try:
-
-        return pd.read_csv(
-            HISTORY_FILE
-        )
-
-    except Exception:
-
-        return pd.DataFrame()
+    return pd.read_csv(
+        HISTORY_FILE
+    )
 
 
 # ============================================================
@@ -256,7 +248,7 @@ st.title(
 
 st.caption(
     "Financial Fraud Detection - "
-    "XGBoost Deployment Model V3"
+    "XGBoost Deployment Model V2"
 )
 
 
@@ -270,16 +262,13 @@ with st.sidebar:
         "Thông tin hệ thống"
     )
 
-
     st.write(
-        "**Model:** XGBoost Deployment V3"
+        "**Model:** XGBoost V2"
     )
 
-
     st.write(
-        "**Số feature:** 4"
+        "**Số feature:** 3"
     )
-
 
     st.write(
         f"**Ngưỡng cảnh báo:** "
@@ -291,24 +280,22 @@ with st.sidebar:
 
 
     st.write(
-        "**Feature sử dụng:**"
+        "**Feature triển khai:**"
     )
-
 
     st.code(
         """
 type
 amount
 oldbalanceOrg
-transactions_per_hour
         """
     )
 
 
     st.info(
-        "`transactions_per_hour` là số giao dịch "
-        "đã xảy ra trước giao dịch hiện tại "
-        "trong cùng khung giờ."
+        "Model V2 không sử dụng step, "
+        "số dư người nhận hoặc "
+        "thông tin sau giao dịch."
     )
 
 
@@ -327,7 +314,7 @@ tab_check, tab_dashboard, tab_history, tab_model = st.tabs(
 
 
 # ============================================================
-# TAB 1 - CHECK TRANSACTION
+# TAB 1 - TRANSACTION CHECK
 # ============================================================
 
 with tab_check:
@@ -345,17 +332,14 @@ with tab_check:
 
 
         # ====================================================
-        # LEFT COLUMN
+        # LEFT
         # ====================================================
 
         with col1:
 
             transaction_type = st.selectbox(
                 "Loại giao dịch",
-                VALID_TYPES,
-                help=(
-                    "Loại giao dịch cần kiểm tra."
-                )
+                VALID_TYPES
             )
 
 
@@ -364,15 +348,12 @@ with tab_check:
                 min_value=0.0,
                 value=1000000.0,
                 step=100000.0,
-                format="%.2f",
-                help=(
-                    "Số tiền của giao dịch hiện tại."
-                )
+                format="%.2f"
             )
 
 
         # ====================================================
-        # RIGHT COLUMN
+        # RIGHT
         # ====================================================
 
         with col2:
@@ -382,32 +363,15 @@ with tab_check:
                 min_value=0.0,
                 value=5000000.0,
                 step=100000.0,
-                format="%.2f",
-                help=(
-                    "Số dư tài khoản trước "
-                    "khi giao dịch xảy ra."
-                )
+                format="%.2f"
             )
 
 
-            transactions_per_hour = st.number_input(
-                "Số giao dịch trước đó trong cùng giờ",
-                min_value=0,
-                value=0,
-                step=1,
-                help=(
-                    "Ví dụ nhập 2 nghĩa là tài khoản "
-                    "đã thực hiện 2 giao dịch trước đó "
-                    "trong cùng khung giờ."
-                )
+            st.info(
+                "Model V2 chỉ sử dụng "
+                "thông tin có thể biết "
+                "trước khi giao dịch hoàn tất."
             )
-
-
-        st.info(
-            "Trong hệ thống thực tế, số giao dịch trong giờ "
-            "nên được backend tự động tính từ lịch sử giao dịch. "
-            "Ở bản demo, giá trị này được nhập thủ công."
-        )
 
 
         submitted = st.form_submit_button(
@@ -417,7 +381,7 @@ with tab_check:
 
 
     # ========================================================
-    # PROCESS TRANSACTION
+    # PROCESS
     # ========================================================
 
     if submitted:
@@ -426,14 +390,13 @@ with tab_check:
             transaction_type=transaction_type,
             amount=amount,
             oldbalanceOrg=oldbalanceOrg,
-            transactions_per_hour=transactions_per_hour,
             model=model,
             threshold=threshold
         )
 
 
         # ====================================================
-        # INVALID DATA
+        # ERROR
         # ====================================================
 
         if not result["success"]:
@@ -448,7 +411,6 @@ with tab_check:
                 st.error(
                     f"❌ {error}"
                 )
-
 
         else:
 
@@ -485,7 +447,6 @@ with tab_check:
                 transaction_type=transaction_type,
                 amount=amount,
                 oldbalanceOrg=oldbalanceOrg,
-                transactions_per_hour=transactions_per_hour,
                 probability=probability,
                 threshold=threshold,
                 risk_level=risk_level,
@@ -506,7 +467,7 @@ with tab_check:
 
 
             # ================================================
-            # BUSINESS WARNINGS
+            # BUSINESS WARNING
             # ================================================
 
             if warnings:
@@ -525,7 +486,7 @@ with tab_check:
 
 
             # ================================================
-            # MAIN METRICS
+            # METRICS
             # ================================================
 
             col1, col2, col3 = (
@@ -536,7 +497,7 @@ with tab_check:
             with col1:
 
                 st.metric(
-                    "Điểm rủi ro của mô hình",
+                    "Xác suất mô hình",
                     f"{probability * 100:.2f}%"
                 )
 
@@ -580,7 +541,7 @@ with tab_check:
 
 
             # ================================================
-            # STATUS MESSAGE
+            # FINAL MESSAGE
             # ================================================
 
             if risk_status == "fraud":
@@ -595,8 +556,8 @@ with tab_check:
 
                 st.warning(
                     "⚠️ Giao dịch có mức rủi ro cao. "
-                    "Điểm rủi ro chưa vượt ngưỡng "
-                    "cảnh báo nhưng nên được kiểm tra thêm."
+                    "Xác suất chưa vượt ngưỡng cảnh báo "
+                    "nhưng nên được kiểm tra thêm."
                 )
 
 
@@ -621,8 +582,8 @@ with tab_check:
             if warnings:
 
                 st.info(
-                    "Kết quả của mô hình và cảnh báo "
-                    "nghiệp vụ được đánh giá độc lập."
+                    "Cảnh báo nghiệp vụ và kết quả "
+                    "của model được đánh giá độc lập."
                 )
 
 
@@ -650,7 +611,7 @@ with tab_check:
             ):
 
                 st.write(
-                    f"Model score: "
+                    f"Probability: "
                     f"`{probability:.6f}`"
                 )
 
@@ -662,11 +623,6 @@ with tab_check:
                 st.write(
                     f"Prediction: "
                     f"`{prediction}`"
-                )
-
-                st.write(
-                    "Transactions per hour: "
-                    f"`{transactions_per_hour}`"
                 )
 
 
@@ -690,11 +646,10 @@ with tab_dashboard:
             "Chưa có dữ liệu giao dịch."
         )
 
-
     else:
 
         # ====================================================
-        # SUMMARY METRICS
+        # SUMMARY
         # ====================================================
 
         total_transactions = len(
@@ -732,15 +687,8 @@ with tab_dashboard:
         )
 
 
-        avg_frequency = (
-            history_df[
-                "transactions_per_hour"
-            ].mean()
-        )
-
-
-        col1, col2, col3, col4, col5 = (
-            st.columns(5)
+        col1, col2, col3, col4 = (
+            st.columns(4)
         )
 
 
@@ -771,16 +719,8 @@ with tab_dashboard:
         with col4:
 
             st.metric(
-                "Điểm rủi ro TB",
+                "Xác suất trung bình",
                 f"{avg_probability:.2f}%"
-            )
-
-
-        with col5:
-
-            st.metric(
-                "Tần suất TB",
-                f"{avg_frequency:.2f}"
             )
 
 
@@ -788,11 +728,11 @@ with tab_dashboard:
 
 
         # ====================================================
-        # TRANSACTION TYPE
+        # TYPE CHART
         # ====================================================
 
         st.write(
-            "### Số giao dịch theo loại"
+            "### Giao dịch theo loại"
         )
 
 
@@ -810,7 +750,7 @@ with tab_dashboard:
 
 
         # ====================================================
-        # RISK DISTRIBUTION
+        # RISK CHART
         # ====================================================
 
         st.write(
@@ -828,29 +768,6 @@ with tab_dashboard:
 
         st.bar_chart(
             risk_counts
-        )
-
-
-        # ====================================================
-        # FREQUENCY DISTRIBUTION
-        # ====================================================
-
-        st.write(
-            "### Tần suất giao dịch theo giờ"
-        )
-
-
-        frequency_counts = (
-            history_df[
-                "transactions_per_hour"
-            ]
-            .value_counts()
-            .sort_index()
-        )
-
-
-        st.bar_chart(
-            frequency_counts
         )
 
 
@@ -874,15 +791,14 @@ with tab_history:
             "Chưa có giao dịch nào."
         )
 
-
     else:
-
-        # ====================================================
-        # FILTERS
-        # ====================================================
 
         col1, col2 = st.columns(2)
 
+
+        # ====================================================
+        # TYPE FILTER
+        # ====================================================
 
         with col1:
 
@@ -902,6 +818,10 @@ with tab_history:
                 )
             )
 
+
+        # ====================================================
+        # RISK FILTER
+        # ====================================================
 
         with col2:
 
@@ -955,10 +875,6 @@ with tab_history:
         )
 
 
-        # ====================================================
-        # TABLE
-        # ====================================================
-
         st.dataframe(
             filtered_df[
                 [
@@ -966,7 +882,6 @@ with tab_history:
                     "type",
                     "amount",
                     "oldbalanceOrg",
-                    "transactions_per_hour",
                     "probability_percent",
                     "risk_level",
                     "warnings"
@@ -984,33 +899,36 @@ with tab_history:
 
 
 # ============================================================
-# TAB 4 - MODEL INFO
+# TAB 4 - MODEL INFORMATION
 # ============================================================
 
 with tab_model:
 
     st.subheader(
-        "Thông tin XGBoost Deployment V3"
+        "Thông tin XGBoost Deployment V2"
     )
 
 
     st.markdown(
         """
-### Các feature sử dụng
+        ### Feature được sử dụng
 
-Model V3 sử dụng 4 đặc trưng:
+        Model triển khai cuối sử dụng 3 feature:
 
-- `type`: loại giao dịch
-- `amount`: số tiền giao dịch
-- `oldbalanceOrg`: số dư tài khoản trước giao dịch
-- `transactions_per_hour`: số giao dịch trước đó trong cùng khung giờ
+        - `type`
+        - `amount`
+        - `oldbalanceOrg`
 
-Feature `transactions_per_hour` được tạo từ `nameOrig`
-và `step` trong dữ liệu PaySim bằng cách đếm số giao dịch
-trước đó của cùng tài khoản trong cùng một `step`.
+        `step` đã được loại bỏ vì đây là thuộc tính
+        thời gian đặc thù của dữ liệu mô phỏng PaySim
+        và không phù hợp để tự sinh trong môi trường thực tế.
         """
     )
 
+
+    # ========================================================
+    # MODEL PERFORMANCE
+    # ========================================================
 
     st.write(
         "### Kết quả trên tập Test"
@@ -1029,12 +947,12 @@ trước đó của cùng tài khoản trong cùng một `step`.
             ],
 
             "Giá trị": [
-                0.999291,
-                0.707244,
-                0.768669,
-                0.736678,
+                0.999305,
+                0.717341,
+                0.762175,
+                0.739079,
                 0.998724,
-                0.810759
+                0.809026
             ]
         }
     )
@@ -1066,10 +984,10 @@ trước đó của cùng tài khoản trong cùng một `step`.
             ],
 
             "Value": [
-                952769,
-                392,
-                285,
-                947
+                952791,
+                370,
+                293,
+                939
             ]
         }
     )
@@ -1082,79 +1000,10 @@ trước đó của cùng tài khoản trong cùng một `step`.
     )
 
 
-    # ========================================================
-    # V2 VS V3
-    # ========================================================
-
-    st.write(
-        "### So sánh Deployment V2 và V3"
-    )
-
-
-    comparison_df = pd.DataFrame(
-        {
-            "Chỉ số": [
-                "Precision",
-                "Recall",
-                "F1-score",
-                "PR-AUC",
-                "False Positive",
-                "False Negative",
-                "True Positive"
-            ],
-
-            "V2": [
-                0.717341,
-                0.762175,
-                0.739079,
-                0.809026,
-                370,
-                293,
-                939
-            ],
-
-            "V3": [
-                0.707244,
-                0.768669,
-                0.736678,
-                0.810759,
-                392,
-                285,
-                947
-            ]
-        }
-    )
-
-
-    st.dataframe(
-        comparison_df,
-        use_container_width=True,
-        hide_index=True
-    )
-
-
     st.info(
-        "V3 tăng nhẹ Recall và PR-AUC, "
-        "nhưng Precision và F1-score giảm nhẹ. "
-        "Feature tần suất cung cấp thêm thông tin "
-        "nhưng mức cải thiện trên PaySim còn hạn chế."
-    )
-
-
-    st.write(
-        "### Ngưỡng cảnh báo"
-    )
-
-
-    st.write(
-        f"Threshold được chọn trên tập Validation: "
-        f"**{threshold * 100:.0f}%**"
-    )
-
-
-    st.caption(
-        "Ngưỡng được lựa chọn dựa trên "
-        "F1-score của tập Validation."
+        "Ngưỡng cảnh báo được lựa chọn "
+        "trên tập Validation bằng F1-score "
+        "và có giá trị 0.99."
     )
 
 
@@ -1167,8 +1016,8 @@ st.divider()
 
 st.caption(
     "Financial Fraud Detection Project | "
-    "XGBoost Deployment V3 | "
-    "Dữ liệu PaySim | "
-    "Kết quả của mô hình chỉ là tín hiệu hỗ trợ "
-    "phát hiện giao dịch bất thường."
+    "XGBoost Deployment V2 | "
+    "Model được huấn luyện trên dữ liệu PaySim. "
+    "Kết quả là dự đoán của mô hình, "
+    "không phải kết luận tuyệt đối."
 )
