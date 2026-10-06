@@ -145,6 +145,37 @@ XGBOOST_DEPLOYMENT_V2_THRESHOLD_RESULTS_FILE = (
 )
 
 # ============================================================
+# XGBOOST DEPLOYMENT V3
+# Features:
+# type, amount, oldbalanceOrg, transactions_per_hour
+# ============================================================
+
+V3_DATA_FILE = (
+    PROCESSED_DATA_DIR /
+    "PS_v3_frequency.csv"
+)
+
+XGBOOST_DEPLOYMENT_V3_MODEL_FILE = (
+    XGBOOST_MODEL_DIR /
+    "xgboost_deployment_v3_model.pkl"
+)
+
+XGBOOST_DEPLOYMENT_V3_THRESHOLD_FILE = (
+    XGBOOST_MODEL_DIR /
+    "xgboost_deployment_v3_threshold.txt"
+)
+
+XGBOOST_DEPLOYMENT_V3_THRESHOLD_RESULTS_FILE = (
+    XGBOOST_RESULTS_DIR /
+    "xgboost_deployment_v3_threshold_results.csv"
+)
+
+XGBOOST_V3_FREQUENCY_ANALYSIS_FILE = (
+    XGBOOST_RESULTS_DIR /
+    "xgboost_v3_frequency_analysis.csv"
+)
+
+# ============================================================
 # PLOTS
 # ============================================================
 

@@ -1,9 +1,11 @@
 # ============================================================
-# FRAUD SERVICE - DEPLOYMENT V2
+# FRAUD SERVICE - XGBOOST DEPLOYMENT V3
+#
 # Features:
 # - type
 # - amount
 # - oldbalanceOrg
+# - transactions_per_hour
 # ============================================================
 
 import sys
@@ -22,7 +24,6 @@ APP_DIR = SERVICE_DIR.parent
 PROJECT_ROOT = APP_DIR.parent
 SCRIPTS_DIR = PROJECT_ROOT / "scripts"
 
-
 if str(SCRIPTS_DIR) not in sys.path:
     sys.path.insert(
         0,
@@ -31,8 +32,8 @@ if str(SCRIPTS_DIR) not in sys.path:
 
 
 from paths import (
-    XGBOOST_DEPLOYMENT_V2_MODEL_FILE,
-    XGBOOST_DEPLOYMENT_V2_THRESHOLD_FILE
+    XGBOOST_DEPLOYMENT_V3_MODEL_FILE,
+    XGBOOST_DEPLOYMENT_V3_THRESHOLD_FILE
 )
 
 
@@ -43,7 +44,8 @@ from paths import (
 FEATURES = [
     "type",
     "amount",
-    "oldbalanceOrg"
+    "oldbalanceOrg",
+    "transactions_per_hour"
 ]
 
 
@@ -70,15 +72,15 @@ OUTGOING_TYPES = [
 
 def load_model():
 
-    if not XGBOOST_DEPLOYMENT_V2_MODEL_FILE.exists():
+    if not XGBOOST_DEPLOYMENT_V3_MODEL_FILE.exists():
 
         raise FileNotFoundError(
-            "Không tìm thấy Deployment V2 model:\n"
-            f"{XGBOOST_DEPLOYMENT_V2_MODEL_FILE}"
+            "Không tìm thấy XGBoost Deployment V3 model:\n"
+            f"{XGBOOST_DEPLOYMENT_V3_MODEL_FILE}"
         )
 
     return joblib.load(
-        XGBOOST_DEPLOYMENT_V2_MODEL_FILE
+        XGBOOST_DEPLOYMENT_V3_MODEL_FILE
     )
 
 
@@ -88,15 +90,15 @@ def load_model():
 
 def load_threshold():
 
-    if not XGBOOST_DEPLOYMENT_V2_THRESHOLD_FILE.exists():
+    if not XGBOOST_DEPLOYMENT_V3_THRESHOLD_FILE.exists():
 
         raise FileNotFoundError(
-            "Không tìm thấy Deployment V2 threshold:\n"
-            f"{XGBOOST_DEPLOYMENT_V2_THRESHOLD_FILE}"
+            "Không tìm thấy threshold V3:\n"
+            f"{XGBOOST_DEPLOYMENT_V3_THRESHOLD_FILE}"
         )
 
     with open(
-        XGBOOST_DEPLOYMENT_V2_THRESHOLD_FILE,
+        XGBOOST_DEPLOYMENT_V3_THRESHOLD_FILE,
         "r",
         encoding="utf-8"
     ) as f:
@@ -115,7 +117,8 @@ def load_threshold():
 def validate_transaction(
     transaction_type,
     amount,
-    oldbalanceOrg
+    oldbalanceOrg,
+    transactions_per_hour
 ):
 
     errors = []
@@ -152,6 +155,17 @@ def validate_transaction(
 
         errors.append(
             "Số dư tài khoản không được âm."
+        )
+
+
+    # --------------------------------------------------------
+    # FREQUENCY
+    # --------------------------------------------------------
+
+    if transactions_per_hour < 0:
+
+        errors.append(
+            "Số giao dịch trong giờ không được âm."
         )
 
 
@@ -209,7 +223,8 @@ def validate_transaction(
 def create_model_input(
     transaction_type,
     amount,
-    oldbalanceOrg
+    oldbalanceOrg,
+    transactions_per_hour
 ):
 
     transaction = pd.DataFrame(
@@ -224,6 +239,10 @@ def create_model_input(
 
             "oldbalanceOrg": [
                 oldbalanceOrg
+            ],
+
+            "transactions_per_hour": [
+                transactions_per_hour
             ]
         }
     )
@@ -268,6 +287,7 @@ def analyze_transaction(
     transaction_type,
     amount,
     oldbalanceOrg,
+    transactions_per_hour,
     model,
     threshold
 ):
@@ -280,13 +300,14 @@ def analyze_transaction(
         validate_transaction(
             transaction_type=transaction_type,
             amount=amount,
-            oldbalanceOrg=oldbalanceOrg
+            oldbalanceOrg=oldbalanceOrg,
+            transactions_per_hour=transactions_per_hour
         )
     )
 
 
     # --------------------------------------------------------
-    # STOP NẾU INPUT SAI
+    # STOP IF INVALID
     # --------------------------------------------------------
 
     if errors:
@@ -302,15 +323,14 @@ def analyze_transaction(
 
 
     # --------------------------------------------------------
-    # CREATE MODEL INPUT
+    # MODEL INPUT
     # --------------------------------------------------------
 
-    transaction = (
-        create_model_input(
-            transaction_type=transaction_type,
-            amount=amount,
-            oldbalanceOrg=oldbalanceOrg
-        )
+    transaction = create_model_input(
+        transaction_type=transaction_type,
+        amount=amount,
+        oldbalanceOrg=oldbalanceOrg,
+        transactions_per_hour=transactions_per_hour
     )
 
 
