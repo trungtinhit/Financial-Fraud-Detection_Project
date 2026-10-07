@@ -1,15 +1,28 @@
 # ============================================================
-# XGBOOST - FRAUD DETECTION - PaySim
+# FRAUD DETECTION - TRAIN / VALIDATION / TEST
+# PaySim
 #
 # Quy trình:
 # 1. Đọc PS_remake.csv
-# 2. Tạo feature
-# 3. Train / Validation / Test
-# 4. XGBoost
-# 5. Validation -> tìm threshold
-# 6. Test -> đánh giá cuối cùng
-# 7. Lưu model
+# 2. Tạo feature nếu chưa tồn tại
+# 3. Chia:
+#       Train      = 70%
+#       Validation = 15%
+#       Test       = 15%
+# 4. Huấn luyện Logistic Regression trên Train
+# 5. Dùng Validation để tìm Threshold
+# 6. KHÔNG dùng Test để chọn threshold
+# 7. Đánh giá cuối cùng trên Test
+# 8. Lưu model + threshold
 # ============================================================
+
+
+import sys
+from pathlib import Path
+
+PROJECT_ROOT = Path(__file__).resolve().parents[3]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
 
 import pandas as pd
 import numpy as np
@@ -17,35 +30,32 @@ import joblib
 
 from sklearn.model_selection import train_test_split
 
-from sklearn.preprocessing import OneHotEncoder
 from sklearn.compose import ColumnTransformer
+from sklearn.preprocessing import (
+    OneHotEncoder,
+    StandardScaler
+)
+
 from sklearn.pipeline import Pipeline
 
+from sklearn.linear_model import LogisticRegression
+
 from sklearn.metrics import (
-    confusion_matrix,
     classification_report,
-    accuracy_score,
+    confusion_matrix,
     precision_score,
     recall_score,
     f1_score,
+    accuracy_score,
     roc_auc_score,
     average_precision_score
 )
 
-from xgboost import XGBClassifier
-
-
-# ============================================================
-# IMPORT ĐƯỜNG DẪN PROJECT
-# ============================================================
-
-from paths import (
+from scripts.config.paths import (
     PROCESSED_DATA_FILE,
-    XGBOOST_MODEL_DIR,
-    XGBOOST_RESULTS_DIR,
-    XGBOOST_MODEL_FILE,
-    XGBOOST_THRESHOLD_FILE,
-    XGBOOST_THRESHOLD_RESULTS_FILE
+    LOGISTIC_MODEL_FILE,
+    LOGISTIC_THRESHOLD_FILE,
+    LOGISTIC_VALIDATION_THRESHOLD_RESULTS_FILE
 )
 
 
@@ -53,35 +63,15 @@ from paths import (
 # 1. CẤU HÌNH
 # ============================================================
 
-RANDOM_STATE = 42
-
-
-# ============================================================
-# TẠO THƯ MỤC NẾU CHƯA TỒN TẠI
-# ============================================================
-
-XGBOOST_MODEL_DIR.mkdir(
-    parents=True,
-    exist_ok=True
-)
-
-XGBOOST_RESULTS_DIR.mkdir(
-    parents=True,
-    exist_ok=True
-)
-
-
-# ============================================================
-# ĐƯỜNG DẪN FILE
-# ============================================================
-
 DATA_FILE = PROCESSED_DATA_FILE
 
-MODEL_FILE = XGBOOST_MODEL_FILE
+MODEL_FILE = LOGISTIC_MODEL_FILE
 
-THRESHOLD_FILE = XGBOOST_THRESHOLD_FILE
+THRESHOLD_FILE = LOGISTIC_THRESHOLD_FILE
 
-THRESHOLD_RESULT_FILE = XGBOOST_THRESHOLD_RESULTS_FILE
+THRESHOLD_RESULT_FILE = LOGISTIC_VALIDATION_THRESHOLD_RESULTS_FILE
+
+RANDOM_STATE = 42
 
 
 # ============================================================
@@ -92,10 +82,6 @@ print("=" * 70)
 print("1. ĐỌC DỮ LIỆU")
 print("=" * 70)
 
-print(
-    f"File dữ liệu: {DATA_FILE}"
-)
-
 df = pd.read_csv(DATA_FILE)
 
 print("Đọc dữ liệu thành công!")
@@ -105,57 +91,49 @@ print(
 )
 
 print(
-    f"Số cột : {len(df.columns)}"
+    f"Số cột: {len(df.columns)}"
 )
 
 
 # ============================================================
-# 3. FEATURE ENGINEERING
+# 3. TẠO FEATURE NẾU CHƯA CÓ
 # ============================================================
 
 print("\n" + "=" * 70)
-print("2. FEATURE ENGINEERING")
+print("2. CHUẨN BỊ FEATURE")
 print("=" * 70)
 
 
 if "balanceDiffOrig" not in df.columns:
+
+    print("Đang tạo balanceDiffOrig...")
 
     df["balanceDiffOrig"] = (
         df["oldbalanceOrg"]
         - df["newbalanceOrig"]
     )
 
-    print(
-        "Đã tạo balanceDiffOrig."
-    )
-
 else:
 
-    print(
-        "balanceDiffOrig đã tồn tại."
-    )
+    print("balanceDiffOrig đã tồn tại.")
 
 
 if "balanceDiffDest" not in df.columns:
+
+    print("Đang tạo balanceDiffDest...")
 
     df["balanceDiffDest"] = (
         df["newbalanceDest"]
         - df["oldbalanceDest"]
     )
 
-    print(
-        "Đã tạo balanceDiffDest."
-    )
-
 else:
 
-    print(
-        "balanceDiffDest đã tồn tại."
-    )
+    print("balanceDiffDest đã tồn tại.")
 
 
 # ============================================================
-# 4. CHỌN FEATURES
+# 4. XÁC ĐỊNH FEATURES
 # ============================================================
 
 print("\n" + "=" * 70)
@@ -179,9 +157,13 @@ FEATURES = [
 TARGET = "isFraud"
 
 
+# Kiểm tra cột
+
+required_columns = FEATURES + [TARGET]
+
 missing_columns = [
     col
-    for col in FEATURES + [TARGET]
+    for col in required_columns
     if col not in df.columns
 ]
 
@@ -202,84 +184,54 @@ print("\nFeatures:")
 
 for feature in FEATURES:
 
-    print(
-        " -",
-        feature
-    )
+    print(" -", feature)
+
+
+print("\nTarget:")
+
+print(" -", TARGET)
 
 
 # ============================================================
-# 5. KIỂM TRA PHÂN BỐ TARGET
+# 5. CHIA TRAIN + TEMP
 # ============================================================
-
-print("\n" + "=" * 70)
-print("4. PHÂN BỐ TARGET")
-print("=" * 70)
-
-
-print(
-    y.value_counts()
-)
-
-
-fraud_count = int(
-    (y == 1).sum()
-)
-
-normal_count = int(
-    (y == 0).sum()
-)
-
-
-print(
-    f"Normal: {normal_count:,}"
-)
-
-print(
-    f"Fraud : {fraud_count:,}"
-)
-
-
-# ============================================================
-# 6. CHIA TRAIN / VALIDATION / TEST
-# ============================================================
-
-print("\n" + "=" * 70)
-print("5. CHIA TRAIN / VALIDATION / TEST")
-print("=" * 70)
-
-
+#
 # Train = 70%
-# Temp = 30%
+# Temp  = 30%
+#
+# Sau đó Temp tiếp tục chia:
+#
+# Validation = 15%
+# Test       = 15%
+#
+# ============================================================
+
+print("\n" + "=" * 70)
+print("4. CHIA TRAIN / VALIDATION / TEST")
+print("=" * 70)
+
 
 X_train, X_temp, y_train, y_temp = train_test_split(
-
     X,
     y,
-
     test_size=0.30,
-
     random_state=RANDOM_STATE,
-
     stratify=y
-
 )
 
 
-# Validation = 15%
-# Test = 15%
+# Temp có 30%.
+#
+# Chia đôi Temp:
+# Validation = 15% toàn bộ
+# Test       = 15% toàn bộ
 
 X_val, X_test, y_val, y_test = train_test_split(
-
     X_temp,
     y_temp,
-
     test_size=0.50,
-
     random_state=RANDOM_STATE,
-
     stratify=y_temp
-
 )
 
 
@@ -297,47 +249,59 @@ print(
 
 
 # ============================================================
-# 7. TÍNH SCALE_POS_WEIGHT
+# 6. KIỂM TRA TỶ LỆ FRAUD
 # ============================================================
 
 print("\n" + "=" * 70)
-print("6. XỬ LÝ MẤT CÂN BẰNG")
+print("5. KIỂM TRA PHÂN BỐ FRAUD")
 print("=" * 70)
 
 
-train_normal = int(
-    (y_train == 0).sum()
+print(
+    "\nTrain:"
 )
 
-train_fraud = int(
-    (y_train == 1).sum()
+print(
+    y_train.value_counts()
 )
 
-
-scale_pos_weight = (
-    train_normal / train_fraud
+print(
+    f"Tỷ lệ fraud: {y_train.mean() * 100:.4f}%"
 )
 
 
 print(
-    f"Normal trong Train: {train_normal:,}"
+    "\nValidation:"
 )
 
 print(
-    f"Fraud trong Train : {train_fraud:,}"
+    y_val.value_counts()
 )
 
 print(
-    f"scale_pos_weight   : {scale_pos_weight:.2f}"
+    f"Tỷ lệ fraud: {y_val.mean() * 100:.4f}%"
+)
+
+
+print(
+    "\nTest:"
+)
+
+print(
+    y_test.value_counts()
+)
+
+print(
+    f"Tỷ lệ fraud: {y_test.mean() * 100:.4f}%"
 )
 
 
 # ============================================================
-# 8. PREPROCESSING
+# 7. PREPROCESSING
 # ============================================================
 
 print("\n" + "=" * 70)
-print("7. PREPROCESSING")
+print("6. PREPROCESSING")
 print("=" * 70)
 
 
@@ -347,29 +311,27 @@ categorical_features = [
 
 
 numeric_features = [
-
     "step",
-
     "amount",
-
     "oldbalanceOrg",
-
     "newbalanceOrig",
-
     "oldbalanceDest",
-
     "newbalanceDest",
-
     "balanceDiffOrig",
-
     "balanceDiffDest"
-
 ]
 
 
 preprocessor = ColumnTransformer(
-
     transformers=[
+
+        (
+            "numeric",
+
+            StandardScaler(),
+
+            numeric_features
+        ),
 
         (
             "categorical",
@@ -379,67 +341,35 @@ preprocessor = ColumnTransformer(
             ),
 
             categorical_features
-
-        ),
-
-        (
-            "numeric",
-
-            "passthrough",
-
-            numeric_features
-
         )
-
     ]
-
 )
 
 
 # ============================================================
-# 9. XGBOOST
+# 8. MODEL
 # ============================================================
 
 print("\n" + "=" * 70)
-print("8. TẠO XGBOOST")
+print("7. TẠO MODEL")
 print("=" * 70)
 
 
-xgb_model = XGBClassifier(
+model = LogisticRegression(
 
-    n_estimators=300,
+    class_weight="balanced",
 
-    max_depth=8,
+    max_iter=1000,
 
-    learning_rate=0.10,
-
-    subsample=0.8,
-
-    colsample_bytree=0.8,
-
-    min_child_weight=2,
-
-    objective="binary:logistic",
-
-    eval_metric="logloss",
-
-    scale_pos_weight=scale_pos_weight,
-
-    tree_method="hist",
-
-    random_state=RANDOM_STATE,
-
-    n_jobs=-1
-
+    random_state=RANDOM_STATE
 )
 
 
 # ============================================================
-# 10. PIPELINE
+# 9. PIPELINE
 # ============================================================
 
 pipeline = Pipeline(
-
     steps=[
 
         (
@@ -451,81 +381,61 @@ pipeline = Pipeline(
         (
             "model",
 
-            xgb_model
+            model
         )
-
     ]
-
 )
 
 
 # ============================================================
-# 11. HUẤN LUYỆN
+# 10. TRAIN
 # ============================================================
 
 print("\n" + "=" * 70)
-print("9. HUẤN LUYỆN XGBOOST")
+print("8. HUẤN LUYỆN MODEL")
 print("=" * 70)
 
 
-print(
-    "Đang huấn luyện..."
-)
-
-print(
-    "Dataset có hơn 6 triệu dòng."
-)
-
-print(
-    "Quá trình này có thể mất thời gian."
-)
-
+print("Đang huấn luyện...")
 
 pipeline.fit(
-
     X_train,
-
     y_train
-
 )
 
-
-print(
-    "Huấn luyện hoàn tất!"
-)
+print("Huấn luyện hoàn tất!")
 
 
 # ============================================================
-# 12. VALIDATION
+# 11. DỰ ĐOÁN VALIDATION
 # ============================================================
 
 print("\n" + "=" * 70)
-print("10. DỰ ĐOÁN VALIDATION")
+print("9. DỰ ĐOÁN VALIDATION")
 print("=" * 70)
 
 
 y_val_prob = pipeline.predict_proba(
-
     X_val
-
 )[:, 1]
 
 
-val_roc_auc = roc_auc_score(
+print("Đã tính xác suất Validation.")
 
+
+# ============================================================
+# 12. TÍNH PR-AUC VALIDATION
+# ============================================================
+
+val_pr_auc = average_precision_score(
     y_val,
-
     y_val_prob
-
 )
 
 
-val_pr_auc = average_precision_score(
-
+val_roc_auc = roc_auc_score(
     y_val,
-
     y_val_prob
-
 )
 
 
@@ -539,80 +449,65 @@ print(
 
 
 # ============================================================
-# 13. THRESHOLD TUNING
+# 13. TÌM THRESHOLD TRÊN VALIDATION
 # ============================================================
 
 print("\n" + "=" * 70)
-print("11. TÌM THRESHOLD TRÊN VALIDATION")
+print("10. TÌM THRESHOLD TRÊN VALIDATION")
 print("=" * 70)
 
 
+# Thử từ 0.50 đến 0.99
+# bước 0.01
+
 thresholds = np.arange(
-
     0.50,
-
     1.00,
-
     0.01
-
 )
 
 
-results = []
+validation_results = []
 
 
 for threshold in thresholds:
 
     y_val_pred = (
-
         y_val_prob >= threshold
-
     ).astype(int)
 
 
     precision = precision_score(
-
         y_val,
-
         y_val_pred,
-
         zero_division=0
-
     )
 
 
     recall = recall_score(
-
         y_val,
-
         y_val_pred,
-
         zero_division=0
-
     )
 
 
     f1 = f1_score(
-
         y_val,
-
         y_val_pred,
-
         zero_division=0
-
     )
 
 
-    tn, fp, fn, tp = confusion_matrix(
-
+    cm = confusion_matrix(
         y_val,
-
         y_val_pred
+    )
 
-    ).ravel()
+
+    tn, fp, fn, tp = cm.ravel()
 
 
-    results.append({
+    validation_results.append({
 
         "threshold": threshold,
 
@@ -629,64 +524,57 @@ for threshold in thresholds:
         "FN": fn,
 
         "TP": tp
-
     })
 
 
-results_df = pd.DataFrame(results)
+validation_results_df = pd.DataFrame(
+    validation_results
+)
 
 
 # ============================================================
 # 14. CHỌN THRESHOLD F1 CAO NHẤT
 # ============================================================
 
-best_index = (
-    results_df["f1"].idxmax()
-)
+best_index = validation_results_df[
+    "f1"
+].idxmax()
 
 
 best_threshold = float(
-
-    results_df.loc[
+    validation_results_df.loc[
         best_index,
         "threshold"
     ]
-
 )
 
 
 best_precision = float(
-
-    results_df.loc[
+    validation_results_df.loc[
         best_index,
         "precision"
     ]
-
 )
 
 
 best_recall = float(
-
-    results_df.loc[
+    validation_results_df.loc[
         best_index,
         "recall"
     ]
-
 )
 
 
 best_f1 = float(
-
-    results_df.loc[
+    validation_results_df.loc[
         best_index,
         "f1"
     ]
-
 )
 
 
 print("\n" + "=" * 70)
-print("12. THRESHOLD TỐT NHẤT")
+print("11. THRESHOLD ĐƯỢC CHỌN")
 print("=" * 70)
 
 
@@ -708,20 +596,17 @@ print(
 
 
 # ============================================================
-# 15. LƯU THRESHOLD RESULTS
+# 15. LƯU BẢNG VALIDATION
 # ============================================================
 
-results_df.to_csv(
-
+validation_results_df.to_csv(
     THRESHOLD_RESULT_FILE,
-
     index=False
-
 )
 
 
 print(
-    "\nĐã lưu:"
+    "\nĐã lưu bảng threshold Validation:"
 )
 
 print(
@@ -730,11 +615,11 @@ print(
 
 
 # ============================================================
-# 16. DỰ ĐOÁN TEST
+# 16. ĐÁNH GIÁ CUỐI CÙNG TRÊN TEST
 # ============================================================
 
 print("\n" + "=" * 70)
-print("13. ĐÁNH GIÁ CUỐI CÙNG TRÊN TEST")
+print("12. ĐÁNH GIÁ CUỐI CÙNG TRÊN TEST")
 print("=" * 70)
 
 
@@ -744,19 +629,15 @@ print(
 
 
 y_test_prob = pipeline.predict_proba(
-
     X_test
-
 )[:, 1]
 
 
-# SỬ DỤNG THRESHOLD
-# ĐÃ CHỌN TRÊN VALIDATION
+# Sử dụng threshold đã được chọn
+# từ Validation
 
 y_test_pred = (
-
     y_test_prob >= best_threshold
-
 ).astype(int)
 
 
@@ -764,93 +645,71 @@ y_test_pred = (
 # 17. CONFUSION MATRIX
 # ============================================================
 
-cm = confusion_matrix(
-
+cm_test = confusion_matrix(
     y_test,
-
     y_test_pred
-
 )
 
 
 print("\nCONFUSION MATRIX:")
 
-print(cm)
+print(
+    cm_test
+)
 
 
-tn, fp, fn, tp = cm.ravel()
+tn, fp, fn, tp = cm_test.ravel()
 
 
 # ============================================================
-# 18. METRICS
+# 18. CÁC CHỈ SỐ TEST
 # ============================================================
 
 test_accuracy = accuracy_score(
-
     y_test,
-
     y_test_pred
-
 )
 
 
 test_precision = precision_score(
-
     y_test,
-
     y_test_pred,
-
     zero_division=0
-
 )
 
 
 test_recall = recall_score(
-
     y_test,
-
     y_test_pred,
-
     zero_division=0
-
 )
 
 
 test_f1 = f1_score(
-
     y_test,
-
     y_test_pred,
-
     zero_division=0
-
 )
 
 
 test_roc_auc = roc_auc_score(
-
     y_test,
-
     y_test_prob
-
 )
 
 
 test_pr_auc = average_precision_score(
-
     y_test,
-
     y_test_prob
-
 )
 
 
 # ============================================================
-# 19. KẾT QUẢ
+# 19. IN KẾT QUẢ
 # ============================================================
 
 print("\n" + "=" * 70)
-print("14. KẾT QUẢ TEST - XGBOOST")
+print("13. KẾT QUẢ TEST")
 print("=" * 70)
 
 
@@ -888,7 +747,7 @@ print(
 # ============================================================
 
 print("\n" + "=" * 70)
-print("15. CHI TIẾT CONFUSION MATRIX")
+print("14. CHI TIẾT CONFUSION MATRIX")
 print("=" * 70)
 
 
@@ -914,30 +773,22 @@ print(
 # ============================================================
 
 print("\n" + "=" * 70)
-print("16. CLASSIFICATION REPORT")
+print("15. CLASSIFICATION REPORT")
 print("=" * 70)
 
 
 print(
-
     classification_report(
-
         y_test,
-
         y_test_pred,
 
         target_names=[
-
             "Normal",
-
             "Fraud"
-
         ],
 
         zero_division=0
-
     )
-
 )
 
 
@@ -946,21 +797,22 @@ print(
 # ============================================================
 
 print("\n" + "=" * 70)
-print("17. LƯU MODEL")
+print("16. LƯU MODEL")
 print("=" * 70)
 
 
 joblib.dump(
-
     pipeline,
-
     MODEL_FILE
-
 )
 
 
 print(
-    f"Đã lưu model: {MODEL_FILE}"
+    f"Đã lưu model:"
+)
+
+print(
+    MODEL_FILE
 )
 
 
@@ -969,29 +821,56 @@ print(
 # ============================================================
 
 with open(
-
     THRESHOLD_FILE,
-
     "w"
-
 ) as f:
 
     f.write(
-
         str(best_threshold)
-
     )
 
 
 print(
-    f"Đã lưu threshold: {THRESHOLD_FILE}"
+    f"Đã lưu threshold:"
+)
+
+print(
+    THRESHOLD_FILE
 )
 
 
 # ============================================================
-# 24. HOÀN TẤT
+# 24. KẾT THÚC
 # ============================================================
 
 print("\n" + "=" * 70)
-print("HOÀN TẤT XGBOOST")
+print("HOÀN TẤT PIPELINE")
 print("=" * 70)
+
+
+print(
+    """
+PS_remake.csv
+      |
+      v
+Train / Validation / Test
+      |
+      v
+Logistic Regression
+      |
+      v
+Validation
+      |
+      v
+Chọn Threshold
+      |
+      v
+Test cuối cùng
+      |
+      v
+Đánh giá
+      |
+      v
+Lưu Model + Threshold
+"""
+)

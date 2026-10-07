@@ -1,34 +1,33 @@
 # ============================================================
-# XGBOOST DEPLOYMENT MODEL
-# Financial Fraud Detection
+# RANDOM FOREST - FRAUD DETECTION - PaySim
 #
-# Model triển khai chỉ dùng các thông tin
-# có thể biết trước / tại thời điểm giao dịch:
-#
-# - step
-# - type
-# - amount
-# - oldbalanceOrg
-#
-# Không dùng:
-# - newbalanceOrig
-# - oldbalanceDest
-# - newbalanceDest
-# - balanceDiffOrig
-# - balanceDiffDest
+# Quy trình:
+# 1. Đọc PS_remake.csv
+# 2. Tạo features
+# 3. Chia Train 70% / Validation 15% / Test 15%
+# 4. Random Forest
+# 5. Validation để tìm threshold
+# 6. Test để đánh giá cuối cùng
+# 7. Lưu model
 # ============================================================
 
 import sys
 from pathlib import Path
+
+PROJECT_ROOT = Path(__file__).resolve().parents[3]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
 
 import pandas as pd
 import numpy as np
 import joblib
 
 from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import OneHotEncoder
 from sklearn.compose import ColumnTransformer
+from sklearn.preprocessing import OneHotEncoder
 from sklearn.pipeline import Pipeline
+
+from sklearn.ensemble import RandomForestClassifier
 
 from sklearn.metrics import (
     confusion_matrix,
@@ -41,70 +40,114 @@ from sklearn.metrics import (
     average_precision_score
 )
 
-from xgboost import XGBClassifier
-
-
-# ============================================================
-# 1. IMPORT PATHS
-# ============================================================
-
-SCRIPT_DIR = Path(__file__).resolve().parent
-
-if str(SCRIPT_DIR) not in sys.path:
-    sys.path.insert(0, str(SCRIPT_DIR))
-
-
-from paths import (
+from scripts.config.paths import (
     PROCESSED_DATA_FILE,
-    XGBOOST_DEPLOYMENT_MODEL_FILE,
-    XGBOOST_DEPLOYMENT_THRESHOLD_FILE,
-    XGBOOST_DEPLOYMENT_THRESHOLD_RESULTS_FILE
+    RANDOM_FOREST_MODEL_FILE,
+    RANDOM_FOREST_THRESHOLD_FILE,
+    RANDOM_FOREST_THRESHOLD_RESULTS_FILE
 )
 
 
 # ============================================================
-# 2. CẤU HÌNH
+# 1. CẤU HÌNH
 # ============================================================
+
+DATA_FILE = PROCESSED_DATA_FILE
+
+MODEL_FILE = RANDOM_FOREST_MODEL_FILE
+
+THRESHOLD_FILE = RANDOM_FOREST_THRESHOLD_FILE
+
+THRESHOLD_RESULT_FILE = RANDOM_FOREST_THRESHOLD_RESULTS_FILE
 
 RANDOM_STATE = 42
 
-FEATURES = [
-    "step",
-    "type",
-    "amount",
-    "oldbalanceOrg"
-]
-
-TARGET = "isFraud"
-
 
 # ============================================================
-# 3. ĐỌC DỮ LIỆU
+# 2. ĐỌC DỮ LIỆU
 # ============================================================
 
 print("=" * 70)
 print("1. ĐỌC DỮ LIỆU")
 print("=" * 70)
 
-print(f"File dữ liệu: {PROCESSED_DATA_FILE}")
-
-df = pd.read_csv(PROCESSED_DATA_FILE)
+df = pd.read_csv(DATA_FILE)
 
 print("Đọc dữ liệu thành công!")
 
-print(f"Số dòng: {len(df):,}")
-print(f"Số cột : {len(df.columns)}")
+print(
+    f"Số dòng: {len(df):,}"
+)
+
+print(
+    f"Số cột: {len(df.columns)}"
+)
 
 
 # ============================================================
-# 4. KIỂM TRA FEATURE
+# 3. TẠO FEATURE
 # ============================================================
 
 print("\n" + "=" * 70)
-print("2. KIỂM TRA FEATURE")
+print("2. CHUẨN BỊ FEATURE")
 print("=" * 70)
 
+
+if "balanceDiffOrig" not in df.columns:
+
+    df["balanceDiffOrig"] = (
+        df["oldbalanceOrg"]
+        - df["newbalanceOrig"]
+    )
+
+    print("Đã tạo balanceDiffOrig.")
+
+else:
+
+    print("balanceDiffOrig đã tồn tại.")
+
+
+if "balanceDiffDest" not in df.columns:
+
+    df["balanceDiffDest"] = (
+        df["newbalanceDest"]
+        - df["oldbalanceDest"]
+    )
+
+    print("Đã tạo balanceDiffDest.")
+
+else:
+
+    print("balanceDiffDest đã tồn tại.")
+
+
+# ============================================================
+# 4. FEATURES
+# ============================================================
+
+print("\n" + "=" * 70)
+print("3. CHỌN FEATURES")
+print("=" * 70)
+
+
+FEATURES = [
+    "step",
+    "type",
+    "amount",
+    "oldbalanceOrg",
+    "newbalanceOrig",
+    "oldbalanceDest",
+    "newbalanceDest",
+    "balanceDiffOrig",
+    "balanceDiffDest"
+]
+
+
+TARGET = "isFraud"
+
+
 required_columns = FEATURES + [TARGET]
+
 
 missing_columns = [
     col
@@ -112,132 +155,126 @@ missing_columns = [
     if col not in df.columns
 ]
 
+
 if missing_columns:
+
     raise ValueError(
         f"Thiếu các cột: {missing_columns}"
     )
 
 
-print("Các feature triển khai:")
+X = df[FEATURES]
+
+y = df[TARGET]
+
+
+print("\nFeatures:")
 
 for feature in FEATURES:
-    print(f" - {feature}")
+
+    print(" -", feature)
 
 
 # ============================================================
-# 5. X / y
-# ============================================================
-
-X = df[FEATURES].copy()
-y = df[TARGET].copy()
-
-
-print("\nPhân bố target:")
-
-print(y.value_counts())
-
-
-# ============================================================
-# 6. TRAIN / VALIDATION / TEST
+# 5. CHIA TRAIN / VALIDATION / TEST
 # ============================================================
 
 print("\n" + "=" * 70)
-print("3. CHIA TRAIN / VALIDATION / TEST")
+print("4. CHIA TRAIN / VALIDATION / TEST")
 print("=" * 70)
 
-# ------------------------------------------------------------
+
 # Train = 70%
 # Temp = 30%
-# ------------------------------------------------------------
 
 X_train, X_temp, y_train, y_temp = train_test_split(
+
     X,
     y,
+
     test_size=0.30,
+
     random_state=RANDOM_STATE,
+
     stratify=y
 )
 
-# ------------------------------------------------------------
+
+# Temp:
 # Validation = 15%
 # Test = 15%
-# ------------------------------------------------------------
 
 X_val, X_test, y_val, y_test = train_test_split(
+
     X_temp,
     y_temp,
+
     test_size=0.50,
+
     random_state=RANDOM_STATE,
+
     stratify=y_temp
 )
 
 
-print(f"Train      : {len(X_train):,}")
-print(f"Validation : {len(X_val):,}")
-print(f"Test       : {len(X_test):,}")
+print(
+    f"Train      : {len(X_train):,}"
+)
 
-print()
-print(f"Fraud Train      : {int(y_train.sum()):,}")
-print(f"Fraud Validation : {int(y_val.sum()):,}")
-print(f"Fraud Test       : {int(y_test.sum()):,}")
+print(
+    f"Validation : {len(X_val):,}"
+)
+
+print(
+    f"Test       : {len(X_test):,}"
+)
 
 
 # ============================================================
-# 7. XỬ LÝ MẤT CÂN BẰNG
-# ============================================================
-
-print("\n" + "=" * 70)
-print("4. XỬ LÝ MẤT CÂN BẰNG")
-print("=" * 70)
-
-train_normal = int(
-    (y_train == 0).sum()
-)
-
-train_fraud = int(
-    (y_train == 1).sum()
-)
-
-scale_pos_weight = (
-    train_normal / train_fraud
-)
-
-print(f"Normal Train     : {train_normal:,}")
-print(f"Fraud Train      : {train_fraud:,}")
-print(f"scale_pos_weight : {scale_pos_weight:.2f}")
-
-
-# ============================================================
-# 8. PREPROCESSING
+# 6. PREPROCESSING
 # ============================================================
 
 print("\n" + "=" * 70)
 print("5. PREPROCESSING")
 print("=" * 70)
 
+
 categorical_features = [
     "type"
 ]
 
+
 numeric_features = [
     "step",
     "amount",
-    "oldbalanceOrg"
+    "oldbalanceOrg",
+    "newbalanceOrig",
+    "oldbalanceDest",
+    "newbalanceDest",
+    "balanceDiffOrig",
+    "balanceDiffDest"
 ]
 
 
 preprocessor = ColumnTransformer(
+
     transformers=[
+
         (
             "categorical",
+
             OneHotEncoder(
                 handle_unknown="ignore"
             ),
+
             categorical_features
         ),
+
         (
             "numeric",
+
             "passthrough",
+
             numeric_features
         )
     ]
@@ -245,86 +282,114 @@ preprocessor = ColumnTransformer(
 
 
 # ============================================================
-# 9. XGBOOST
+# 7. RANDOM FOREST
 # ============================================================
 
 print("\n" + "=" * 70)
-print("6. TẠO XGBOOST DEPLOYMENT MODEL")
+print("6. TẠO RANDOM FOREST")
 print("=" * 70)
 
-xgb_model = XGBClassifier(
-    n_estimators=300,
-    max_depth=8,
-    learning_rate=0.10,
-    subsample=0.8,
-    colsample_bytree=0.8,
-    min_child_weight=2,
-    objective="binary:logistic",
-    eval_metric="logloss",
-    scale_pos_weight=scale_pos_weight,
-    tree_method="hist",
+
+rf_model = RandomForestClassifier(
+
+    n_estimators=100,
+
+    max_depth=15,
+
+    min_samples_leaf=2,
+
+    class_weight="balanced",
+
     random_state=RANDOM_STATE,
+
     n_jobs=-1
 )
 
 
 # ============================================================
-# 10. PIPELINE
+# 8. PIPELINE
 # ============================================================
 
 pipeline = Pipeline(
+
     steps=[
+
         (
             "preprocessing",
+
             preprocessor
         ),
+
         (
             "model",
-            xgb_model
+
+            rf_model
         )
     ]
 )
 
 
 # ============================================================
-# 11. TRAIN
+# 9. HUẤN LUYỆN
 # ============================================================
 
 print("\n" + "=" * 70)
-print("7. HUẤN LUYỆN MODEL")
+print("7. HUẤN LUYỆN RANDOM FOREST")
 print("=" * 70)
 
-print("Đang huấn luyện...")
+print(
+    "Đang huấn luyện..."
+)
+
+print(
+    "Có thể mất nhiều thời gian do dataset lớn."
+)
+
 
 pipeline.fit(
+
     X_train,
+
     y_train
 )
 
-print("Huấn luyện hoàn tất!")
+
+print(
+    "Huấn luyện hoàn tất!"
+)
 
 
 # ============================================================
-# 12. VALIDATION
+# 10. VALIDATION
 # ============================================================
 
 print("\n" + "=" * 70)
-print("8. VALIDATION")
+print("8. DỰ ĐOÁN VALIDATION")
 print("=" * 70)
 
+
 y_val_prob = pipeline.predict_proba(
+
     X_val
+
 )[:, 1]
 
+
 val_roc_auc = roc_auc_score(
+
     y_val,
+
     y_val_prob
 )
 
+
 val_pr_auc = average_precision_score(
+
     y_val,
+
     y_val_prob
 )
+
 
 print(
     f"Validation ROC-AUC : {val_roc_auc:.6f}"
@@ -336,242 +401,344 @@ print(
 
 
 # ============================================================
-# 13. THRESHOLD TUNING
+# 11. THRESHOLD TUNING
 # ============================================================
 
 print("\n" + "=" * 70)
-print("9. THRESHOLD TUNING")
+print("9. TÌM THRESHOLD TRÊN VALIDATION")
 print("=" * 70)
 
+
 thresholds = np.arange(
+
     0.50,
+
     1.00,
+
     0.01
 )
+
 
 results = []
 
 
 for threshold in thresholds:
 
-    y_pred = (
+    y_val_pred = (
+
         y_val_prob >= threshold
+
     ).astype(int)
 
+
     precision = precision_score(
+
         y_val,
-        y_pred,
+
+        y_val_pred,
+
         zero_division=0
     )
+
 
     recall = recall_score(
+
         y_val,
-        y_pred,
+
+        y_val_pred,
+
         zero_division=0
     )
+
 
     f1 = f1_score(
+
         y_val,
-        y_pred,
+
+        y_val_pred,
+
         zero_division=0
     )
 
+
     tn, fp, fn, tp = confusion_matrix(
+
         y_val,
-        y_pred
+
+        y_val_pred
+
     ).ravel()
 
-    results.append(
-        {
-            "threshold": threshold,
-            "precision": precision,
-            "recall": recall,
-            "f1": f1,
-            "TN": tn,
-            "FP": fp,
-            "FN": fn,
-            "TP": tp
-        }
-    )
+
+    results.append({
+
+        "threshold": threshold,
+
+        "precision": precision,
+
+        "recall": recall,
+
+        "f1": f1,
+
+        "TN": tn,
+
+        "FP": fp,
+
+        "FN": fn,
+
+        "TP": tp
+
+    })
 
 
-results_df = pd.DataFrame(
-    results
-)
+results_df = pd.DataFrame(results)
 
 
 # ============================================================
-# 14. CHỌN THRESHOLD
+# 12. CHỌN THRESHOLD F1 CAO NHẤT
 # ============================================================
 
-best_index = (
-    results_df["f1"]
-    .idxmax()
-)
+best_index = results_df["f1"].idxmax()
 
-best_row = (
-    results_df.loc[
-        best_index
-    ]
-)
 
 best_threshold = float(
-    best_row["threshold"]
+
+    results_df.loc[
+        best_index,
+        "threshold"
+    ]
+
+)
+
+
+best_precision = float(
+
+    results_df.loc[
+        best_index,
+        "precision"
+    ]
+
+)
+
+
+best_recall = float(
+
+    results_df.loc[
+        best_index,
+        "recall"
+    ]
+
+)
+
+
+best_f1 = float(
+
+    results_df.loc[
+        best_index,
+        "f1"
+    ]
+
 )
 
 
 print("\n" + "=" * 70)
-print("10. THRESHOLD ĐƯỢC CHỌN")
+print("10. THRESHOLD TỐT NHẤT TRÊN VALIDATION")
 print("=" * 70)
+
 
 print(
     f"Threshold : {best_threshold:.2f}"
 )
 
 print(
-    f"Precision : {best_row['precision']:.6f}"
+    f"Precision : {best_precision:.6f}"
 )
 
 print(
-    f"Recall    : {best_row['recall']:.6f}"
+    f"Recall    : {best_recall:.6f}"
 )
 
 print(
-    f"F1-score  : {best_row['f1']:.6f}"
+    f"F1-score  : {best_f1:.6f}"
 )
 
 
 # ============================================================
-# 15. LƯU THRESHOLD RESULTS
+# 13. LƯU KẾT QUẢ THRESHOLD
 # ============================================================
-
-XGBOOST_DEPLOYMENT_THRESHOLD_RESULTS_FILE.parent.mkdir(
-    parents=True,
-    exist_ok=True
-)
 
 results_df.to_csv(
-    XGBOOST_DEPLOYMENT_THRESHOLD_RESULTS_FILE,
+
+    THRESHOLD_RESULT_FILE,
+
     index=False
 )
 
-print()
-print("Đã lưu threshold results:")
 
 print(
-    XGBOOST_DEPLOYMENT_THRESHOLD_RESULTS_FILE
+    "\nĐã lưu:"
+)
+
+print(
+    THRESHOLD_RESULT_FILE
 )
 
 
 # ============================================================
-# 16. TEST
+# 14. DỰ ĐOÁN TEST
 # ============================================================
 
 print("\n" + "=" * 70)
 print("11. ĐÁNH GIÁ CUỐI CÙNG TRÊN TEST")
 print("=" * 70)
 
+
+print(
+    "Đang dự đoán Test..."
+)
+
+
 y_test_prob = pipeline.predict_proba(
+
     X_test
+
 )[:, 1]
 
+
+# QUAN TRỌNG:
+# dùng threshold lấy từ Validation
+
 y_test_pred = (
+
     y_test_prob >= best_threshold
+
 ).astype(int)
 
 
 # ============================================================
-# 17. CONFUSION MATRIX
+# 15. CONFUSION MATRIX
 # ============================================================
 
 cm = confusion_matrix(
+
     y_test,
+
     y_test_pred
 )
 
-tn, fp, fn, tp = cm.ravel()
 
 print("\nCONFUSION MATRIX:")
 
 print(cm)
 
 
+tn, fp, fn, tp = cm.ravel()
+
+
 # ============================================================
-# 18. METRICS
+# 16. METRICS
 # ============================================================
 
-accuracy = accuracy_score(
+test_accuracy = accuracy_score(
+
     y_test,
+
     y_test_pred
 )
 
-precision = precision_score(
+
+test_precision = precision_score(
+
     y_test,
+
     y_test_pred,
+
     zero_division=0
 )
 
-recall = recall_score(
+
+test_recall = recall_score(
+
     y_test,
+
     y_test_pred,
+
     zero_division=0
 )
 
-f1 = f1_score(
+
+test_f1 = f1_score(
+
     y_test,
+
     y_test_pred,
+
     zero_division=0
 )
 
-roc_auc = roc_auc_score(
+
+test_roc_auc = roc_auc_score(
+
     y_test,
+
     y_test_prob
 )
 
-pr_auc = average_precision_score(
+
+test_pr_auc = average_precision_score(
+
     y_test,
+
     y_test_prob
 )
 
 
 # ============================================================
-# 19. KẾT QUẢ TEST
+# 17. IN KẾT QUẢ
 # ============================================================
 
 print("\n" + "=" * 70)
-print("12. KẾT QUẢ TEST - DEPLOYMENT MODEL")
+print("12. KẾT QUẢ TEST - RANDOM FOREST")
 print("=" * 70)
+
 
 print(
     f"Threshold : {best_threshold:.2f}"
 )
 
 print(
-    f"Accuracy  : {accuracy:.6f}"
+    f"Accuracy  : {test_accuracy:.6f}"
 )
 
 print(
-    f"Precision : {precision:.6f}"
+    f"Precision : {test_precision:.6f}"
 )
 
 print(
-    f"Recall    : {recall:.6f}"
+    f"Recall    : {test_recall:.6f}"
 )
 
 print(
-    f"F1-score  : {f1:.6f}"
+    f"F1-score  : {test_f1:.6f}"
 )
 
 print(
-    f"ROC-AUC   : {roc_auc:.6f}"
+    f"ROC-AUC   : {test_roc_auc:.6f}"
 )
 
 print(
-    f"PR-AUC    : {pr_auc:.6f}"
+    f"PR-AUC    : {test_pr_auc:.6f}"
 )
 
 
-print("\nCHI TIẾT CONFUSION MATRIX:")
+# ============================================================
+# 18. CONFUSION MATRIX CHI TIẾT
+# ============================================================
+
+print("\n" + "=" * 70)
+print("13. CHI TIẾT CONFUSION MATRIX")
+print("=" * 70)
+
 
 print(
     f"TN = {tn:,}"
@@ -591,82 +758,88 @@ print(
 
 
 # ============================================================
-# 20. CLASSIFICATION REPORT
+# 19. CLASSIFICATION REPORT
 # ============================================================
 
 print("\n" + "=" * 70)
-print("13. CLASSIFICATION REPORT")
+print("14. CLASSIFICATION REPORT")
 print("=" * 70)
+
 
 print(
+
     classification_report(
+
         y_test,
+
         y_test_pred,
+
         target_names=[
+
             "Normal",
+
             "Fraud"
+
         ],
+
         zero_division=0
+
     )
+
 )
 
 
 # ============================================================
-# 21. LƯU MODEL
+# 20. LƯU MODEL
 # ============================================================
 
 print("\n" + "=" * 70)
-print("14. LƯU DEPLOYMENT MODEL")
+print("15. LƯU MODEL")
 print("=" * 70)
 
-XGBOOST_DEPLOYMENT_MODEL_FILE.parent.mkdir(
-    parents=True,
-    exist_ok=True
-)
 
 joblib.dump(
+
     pipeline,
-    XGBOOST_DEPLOYMENT_MODEL_FILE
+
+    MODEL_FILE
+
 )
 
-print(
-    "Đã lưu model:"
-)
 
 print(
-    XGBOOST_DEPLOYMENT_MODEL_FILE
+    f"Đã lưu model: {MODEL_FILE}"
 )
 
 
 # ============================================================
-# 22. LƯU THRESHOLD
+# 21. LƯU THRESHOLD
 # ============================================================
 
 with open(
-    XGBOOST_DEPLOYMENT_THRESHOLD_FILE,
-    "w",
-    encoding="utf-8"
+
+    THRESHOLD_FILE,
+
+    "w"
+
 ) as f:
 
     f.write(
-        f"{best_threshold:.2f}"
+
+        str(best_threshold)
+
     )
 
 
-print()
 print(
-    "Đã lưu threshold:"
-)
-
-print(
-    XGBOOST_DEPLOYMENT_THRESHOLD_FILE
+    f"Đã lưu threshold: {THRESHOLD_FILE}"
 )
 
 
 # ============================================================
-# 23. HOÀN TẤT
+# 22. HOÀN TẤT
 # ============================================================
 
 print("\n" + "=" * 70)
-print("HOÀN TẤT DEPLOYMENT MODEL")
+print("HOÀN TẤT RANDOM FOREST")
 print("=" * 70)

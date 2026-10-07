@@ -20,17 +20,16 @@ import pandas as pd
 SERVICE_DIR = Path(__file__).resolve().parent
 APP_DIR = SERVICE_DIR.parent
 PROJECT_ROOT = APP_DIR.parent
-SCRIPTS_DIR = PROJECT_ROOT / "scripts"
 
 
-if str(SCRIPTS_DIR) not in sys.path:
+if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(
         0,
-        str(SCRIPTS_DIR)
+        str(PROJECT_ROOT)
     )
 
 
-from paths import (
+from scripts.config.paths import (
     XGBOOST_DEPLOYMENT_V2_MODEL_FILE,
     XGBOOST_DEPLOYMENT_V2_THRESHOLD_FILE
 )
